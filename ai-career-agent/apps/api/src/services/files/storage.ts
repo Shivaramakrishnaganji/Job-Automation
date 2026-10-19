@@ -12,16 +12,16 @@ export function getUserUploadDir(userId: string): string {
 
 export const resumeUpload = multer({
   storage: multer.diskStorage({
-    destination: (req, _file, cb) => {
+    destination: (req: any, _file: any, cb: any) => {
       const userId = (req.session as any).userId;
       cb(null, getUserUploadDir(userId));
     },
-    filename: (_req, file, cb) => {
+    filename: (_req: any, file: any, cb: any) => {
       cb(null, `${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')}`);
     },
   }),
   limits: { fileSize: 10 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => {
+  fileFilter: (_req: any, file: any, cb: any) => {
     const allowed = [
       'application/pdf',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',

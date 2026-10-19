@@ -15,12 +15,14 @@
     "migrate:deploy": "prisma migrate deploy --schema=prisma/schema.prisma",
     "lint": "eslint \"apps/**/*.ts\" \"apps/**/*.tsx\" \"packages/**/*.ts\""
   },
+  "dependencies": {
+    "prisma": "^5.14.0",
+    "typescript": "^5.4.5"
+  },
   "devDependencies": {
     "concurrently": "^8.2.2",
     "eslint": "^8.57.0",
-    "prisma": "^5.14.0",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.4.5"
+    "ts-node": "^10.9.2"
   },
   "allowScripts": {
     "prisma@5.22.0": true,

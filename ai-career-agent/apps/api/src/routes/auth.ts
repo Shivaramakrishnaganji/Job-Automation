@@ -102,7 +102,7 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
 
 router.post('/logout', (req: Request, res: Response, next: NextFunction) => {
   const userId = req.session.userId;
-  req.session.destroy((err) => {
+  req.session.destroy((err: any) => {
     if (err) {
       return next(err);
     }

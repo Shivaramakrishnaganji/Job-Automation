@@ -29,16 +29,16 @@ const ALLOWED_MIME_TYPES = [
 
 export const resourceUpload = multer({
   storage: multer.diskStorage({
-    destination: (req, _file, cb) => {
+    destination: (req: any, _file: any, cb: any) => {
       cb(null, getResourceDir((req.session as any).userId));
     },
-    filename: (_req, file, cb) => {
+    filename: (_req: any, file: any, cb: any) => {
       const safe = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
       cb(null, `${Date.now()}-${safe}`);
     },
   }),
   limits: { fileSize: 25 * 1024 * 1024 }, // 25MB
-  fileFilter: (_req, file, cb) => {
+  fileFilter: (_req: any, file: any, cb: any) => {
     cb(null, ALLOWED_MIME_TYPES.includes(file.mimetype));
   },
 });
