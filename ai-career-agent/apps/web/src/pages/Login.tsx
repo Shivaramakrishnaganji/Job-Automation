@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sparkles, Lock, Mail, ArrowRight, ShieldCheck, AlertCircle } from 'lucide-react';
+import { Sparkles, Lock, Mail, ArrowRight, ShieldCheck, AlertCircle, User, Briefcase } from 'lucide-react';
 import axios from '../api/client';
 
 export default function Login() {
   const navigate = useNavigate();
   const [isRegister, setIsRegister] = useState(false);
+  const [fullName, setFullName] = useState('');
+  const [track, setTrack] = useState('SOFTWARE_IT');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -18,7 +20,10 @@ export default function Login() {
 
     try {
       const endpoint = isRegister ? '/auth/register' : '/auth/login';
-      await axios.post(endpoint, { email, password });
+      const payload = isRegister
+        ? { email, password, fullName: fullName.trim() || undefined, track }
+        : { email, password };
+      await axios.post(endpoint, payload);
       navigate('/');
     } catch (err: any) {
       const msg = err.response?.data?.message || err.response?.data?.error || 'Authentication failed.';
@@ -77,6 +82,41 @@ export default function Login() {
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
+          {isRegister && (
+            <>
+              <div>
+                <label className="text-xs font-medium text-slate-300 block mb-1">Your Full Name</label>
+                <div className="relative">
+                  <User className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                  <input
+                    type="text"
+                    required
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="e.g. Alex Sharma"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-slate-300 block mb-1">Primary Career Track</label>
+                <div className="relative">
+                  <Briefcase className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                  <select
+                    value={track}
+                    onChange={(e) => setTrack(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-4 py-2.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  >
+                    <option value="SOFTWARE_IT">💻 Software / IT (Frontend, Backend, Full-Stack)</option>
+                    <option value="CORE_EEE">⚡ Core Electrical & Electronics (Power, Embedded)</option>
+                    <option value="BUSINESS_DATA_ANALYST">📊 Business & Data Analyst (Reporting, BI, SQL)</option>
+                  </select>
+                </div>
+              </div>
+            </>
+          )}
+
           <div>
             <label className="text-xs font-medium text-slate-300 block mb-1">Email Address</label>
             <div className="relative">

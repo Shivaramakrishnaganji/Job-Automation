@@ -6,6 +6,8 @@ import { requireAuth } from '../middleware/auth';
 import { logAudit } from '../lib/auditLogger';
 import { applyHardFilters, calculateDeterministicScore } from '../services/matching/matcher';
 import { scoreJobMatch, tailorResume, draftCoverLetter, extractJobDetails } from '../services/ai/openai.service';
+import { searchRelevantEvidence } from '../services/ai/qdrant.service';
+import { generateAtsResumePdf } from '../services/files/pdf-generator';
 
 const router = Router();
 router.use(requireAuth);
@@ -337,13 +339,24 @@ router.post('/:jobId/resume-draft', async (req: Request, res: Response, next: Ne
       return;
     }
 
-    const baseResume = profile?.summary || 'Candidate Profile';
+    // 1. Semantic Vector Search in Qdrant for matching candidate evidence
+    const query = `${job.title} ${job.company || ''} ${job.descriptionText?.slice(0, 1000) || ''}`;
+    const evidenceHits = await searchRelevantEvidence({ userId, query, limit: 5 });
+
+    let enhancedBaseResume = profile?.summary || 'Candidate Profile';
+    if (evidenceHits.length > 0) {
+      enhancedBaseResume +=
+        '\n\nRetrieved Project & Evidence Chunks from Dumped Documents (via Qdrant):\n' +
+        evidenceHits.map((h, i) => `[Source ${i + 1} - ${h.filename || 'Doc'} (Similarity: ${(h.score * 100).toFixed(0)}%)]: ${h.text}`).join('\n\n');
+    }
+
     let draftData: any;
     let generationSource = 'fallback_template';
 
     if (process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY !== 'mock' && !process.env.OPENAI_API_KEY.includes('mock')) {
       try {
-        draftData = await tailorResume(facts, baseResume, job, userId);
+        draftData = await tailorResume(facts, enhancedBaseResume, job, userId);
+        draftData.qdrantEvidence = evidenceHits;
         generationSource = 'openai';
       } catch {
         // Fall back gracefully to deterministic draft
@@ -386,6 +399,153 @@ router.post('/:jobId/resume-draft', async (req: Request, res: Response, next: Ne
     });
 
     res.status(201).json(document);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── GET /jobs/:jobId/resume-draft ────────────────────────────────────────────
+
+router.get('/:jobId/resume-draft', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.session.userId!;
+    const { jobId } = req.params;
+
+    const doc = await prisma.document.findFirst({
+      where: {
+        userId,
+        jobId,
+        documentType: DocumentType.RESUME,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (doc) {
+      res.status(200).json(doc);
+      return;
+    }
+
+    res.status(404).json({ message: 'No resume draft found for this job' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── GET /jobs/:jobId/download-pdf ────────────────────────────────────────────
+
+router.get('/:jobId/download-pdf', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.session.userId!;
+    const { jobId } = req.params;
+
+    const [job, profile, facts] = await Promise.all([
+      prisma.job.findUnique({ where: { id: jobId } }),
+      prisma.candidateProfile.findUnique({ where: { userId } }),
+      prisma.profileFact.findMany({ where: { userId } }),
+    ]);
+
+    if (!job) {
+      res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+
+    // Check for existing document, or create one if none exists
+    let doc = await prisma.document.findFirst({
+      where: {
+        userId,
+        jobId,
+        documentType: DocumentType.RESUME,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    let resumeData: any = doc?.contentJson;
+
+    if (!resumeData) {
+      // Generate draft dynamically
+      const query = `${job.title} ${job.company || ''} ${job.descriptionText?.slice(0, 1000) || ''}`;
+      const evidenceHits = await searchRelevantEvidence({ userId, query, limit: 5 });
+
+      let enhancedBaseResume = profile?.summary || 'Candidate Profile';
+      if (evidenceHits.length > 0) {
+        enhancedBaseResume +=
+          '\n\nRetrieved Project & Evidence Chunks from Dumped Documents (via Qdrant):\n' +
+          evidenceHits.map((h, i) => `[Source ${i + 1} - ${h.filename || 'Doc'}]: ${h.text}`).join('\n\n');
+      }
+
+      let draftData: any;
+      if (process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY !== 'mock' && !process.env.OPENAI_API_KEY.includes('mock')) {
+        try {
+          draftData = await tailorResume(facts, enhancedBaseResume, job, userId);
+          draftData.qdrantEvidence = evidenceHits;
+        } catch {
+          draftData = null;
+        }
+      }
+
+      if (!draftData) {
+        draftData = {
+          headline: `${profile?.headline || 'Engineer'} - Tailored for ${job.title} at ${job.company}`,
+          summary: profile?.summary || `Tailored profile for ${job.title} at ${job.company}.`,
+          skills: facts.filter((f) => f.category === 'SKILL').map((f) => ({ name: f.label })),
+          experienceBullets: [
+            { text: `Prepared tailored engineering alignment for ${job.title} at ${job.company}.` },
+          ],
+          projectBullets: [],
+        };
+      }
+
+      resumeData = draftData;
+
+      // Persist as document
+      await prisma.document.create({
+        data: {
+          userId,
+          jobId,
+          documentType: DocumentType.RESUME,
+          contentJson: draftData as any,
+        },
+      });
+    }
+
+    const skillsList: string[] = Array.isArray(resumeData.skills)
+      ? resumeData.skills.map((s: any) => (typeof s === 'string' ? s : s.name || s.label || ''))
+      : [];
+
+    const expBullets: string[] = Array.isArray(resumeData.experienceBullets)
+      ? resumeData.experienceBullets.map((b: any) => (typeof b === 'string' ? b : b.text || ''))
+      : [];
+
+    const projBullets: string[] = Array.isArray(resumeData.projectBullets)
+      ? resumeData.projectBullets.map((p: any) => (typeof p === 'string' ? p : p.text || ''))
+      : [];
+
+    const pdfBuffer = generateAtsResumePdf({
+      fullName: profile?.fullName || 'Candidate',
+      email: profile?.email || 'applicant@example.com',
+      phone: profile?.phone || undefined,
+      city: profile?.city || undefined,
+      country: profile?.country || undefined,
+      headline: resumeData.headline || profile?.headline,
+      summary: resumeData.summary || profile?.summary,
+      degree: profile?.degree || undefined,
+      branch: profile?.branch || undefined,
+      graduationYear: profile?.graduationYear || undefined,
+      skills: skillsList.filter(Boolean),
+      experienceBullets: expBullets.filter(Boolean),
+      projectBullets: projBullets.filter(Boolean),
+      jobTitle: job.title,
+      companyName: job.company,
+    });
+
+    const safeCompany = (job.company || 'Job').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const safeName = (profile?.fullName || 'Candidate').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const filename = `Resume_${safeCompany}_${safeName}.pdf`;
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    res.send(pdfBuffer);
   } catch (err) {
     next(err);
   }

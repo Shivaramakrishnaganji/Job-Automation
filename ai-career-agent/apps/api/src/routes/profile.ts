@@ -50,13 +50,32 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = req.session.userId!;
 
-    const profile = await prisma.candidateProfile.findUnique({
+    let profile = await prisma.candidateProfile.findUnique({
       where: { userId },
     });
 
     if (!profile) {
-      res.status(404).json({ error: 'Not found', message: 'No profile found. Please create one.' });
-      return;
+      const user = await prisma.user.findUnique({ where: { id: userId } });
+      const rawName = user?.email.split('@')[0] || 'Candidate';
+      const formattedName = rawName
+        .split(/[._-]/)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ');
+
+      profile = await prisma.candidateProfile.create({
+        data: {
+          userId,
+          fullName: formattedName,
+          email: user?.email || '',
+          headline: 'Job Search Candidate',
+          degree: 'Bachelor of Technology (B.Tech)',
+          branch: 'Computer Science & Engineering',
+          graduationYear: 2027,
+          city: 'Hyderabad',
+          country: 'India',
+          summary: 'Motivated candidate looking for opportunities to contribute and grow.',
+        },
+      });
     }
 
     const factsCount = await prisma.profileFact.count({ where: { userId } });

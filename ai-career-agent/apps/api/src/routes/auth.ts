@@ -12,6 +12,12 @@ const router = Router();
 const registerSchema = z.object({
   email: z.string().email('Invalid email address'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
+  fullName: z.string().optional(),
+  track: z.enum(['SOFTWARE_IT', 'CORE_EEE', 'BUSINESS_DATA_ANALYST']).optional(),
+  degree: z.string().optional(),
+  branch: z.string().optional(),
+  graduationYear: z.number().int().optional(),
+  city: z.string().optional(),
 });
 
 const loginSchema = z.object({
@@ -29,7 +35,7 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
       return;
     }
 
-    const { email, password } = parsed.data;
+    const { email, password, fullName, track, degree, branch, graduationYear, city } = parsed.data;
 
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
@@ -38,9 +44,87 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
     }
 
     const passwordHash = await bcrypt.hash(password, 12);
+
+    const rawName = fullName?.trim() || email.split('@')[0];
+    const candidateName = rawName
+      .split(/[._-]/)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+
+    const selectedTrack = track ?? 'SOFTWARE_IT';
+
+    const defaultHeadline =
+      selectedTrack === 'SOFTWARE_IT'
+        ? 'Full-Stack Software Engineer & Systems Developer'
+        : selectedTrack === 'CORE_EEE'
+        ? 'Electrical & Electronics Engineer (Power & Systems)'
+        : 'Business & Data Analyst (Reporting & Insights)';
+
+    const defaultBranch =
+      branch ||
+      (selectedTrack === 'SOFTWARE_IT'
+        ? 'Computer Science & Engineering'
+        : selectedTrack === 'CORE_EEE'
+        ? 'Electrical & Electronics Engineering'
+        : 'Data Analytics & Information Systems');
+
     const user = await prisma.user.create({
-      data: { email, passwordHash },
+      data: {
+        email,
+        passwordHash,
+        candidateProfile: {
+          create: {
+            fullName: candidateName,
+            email,
+            headline: defaultHeadline,
+            degree: degree || 'Bachelor of Technology (B.Tech)',
+            branch: defaultBranch,
+            graduationYear: graduationYear || 2027,
+            city: city || 'Hyderabad',
+            country: 'India',
+          },
+        },
+      },
     });
+
+    // Populate starter facts tailored to the user's career track
+    const starterFactsByTrack: Record<string, Array<{ category: any; label: string; value: any }>> = {
+      SOFTWARE_IT: [
+        { category: 'EDUCATION', label: 'Degree & University', value: `${degree || 'B.Tech'} in ${defaultBranch} (${graduationYear || 2027})` },
+        { category: 'SKILL', label: 'JavaScript / TypeScript & Node.js', value: { level: 'Proficient', years: 2 } },
+        { category: 'SKILL', label: 'React & Modern Frontend Development', value: { level: 'Proficient' } },
+        { category: 'SKILL', label: 'SQL & Database Architecture', value: { level: 'Intermediate' } },
+        { category: 'PROJECT', label: 'Web Application Portfolio Project', value: { liveUrl: 'https://github.com' } },
+      ],
+      CORE_EEE: [
+        { category: 'EDUCATION', label: 'Degree & University', value: `${degree || 'B.Tech'} in ${defaultBranch} (${graduationYear || 2027})` },
+        { category: 'SKILL', label: 'Circuit Analysis & Power Systems', value: { level: 'Proficient' } },
+        { category: 'SKILL', label: 'MATLAB & Simulink Modeling', value: { level: 'Proficient' } },
+        { category: 'SKILL', label: 'Embedded Systems & Microcontrollers', value: { level: 'Intermediate' } },
+        { category: 'PROJECT', label: 'Power Grid Transient Simulation', value: { simulationTools: ['MATLAB', 'Simulink'] } },
+      ],
+      BUSINESS_DATA_ANALYST: [
+        { category: 'EDUCATION', label: 'Degree & University', value: `${degree || 'B.Tech'} in ${defaultBranch} (${graduationYear || 2027})` },
+        { category: 'SKILL', label: 'SQL Querying & Data Modeling', value: { level: 'Advanced' } },
+        { category: 'SKILL', label: 'Python for Data Analysis (Pandas, NumPy)', value: { level: 'Proficient' } },
+        { category: 'SKILL', label: 'Business Intelligence & Dashboards (Power BI, Tableau)', value: { level: 'Proficient' } },
+        { category: 'PROJECT', label: 'Sales & Operations Analytics Dashboard', value: { tools: ['Power BI', 'SQL'] } },
+      ],
+    };
+
+    const starterFacts = starterFactsByTrack[selectedTrack] || starterFactsByTrack.SOFTWARE_IT;
+    for (const f of starterFacts) {
+      await prisma.profileFact.create({
+        data: {
+          userId: user.id,
+          category: f.category,
+          label: f.label,
+          valueJson: f.value,
+          sourceType: 'ONBOARDING_INITIALIZATION',
+          verifiedByUser: true,
+        },
+      });
+    }
 
     req.session.userId = user.id;
 

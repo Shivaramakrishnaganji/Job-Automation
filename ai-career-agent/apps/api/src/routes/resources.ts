@@ -13,6 +13,27 @@ import {
   detectResourceType,
 } from '../services/resources/file-parser';
 import { validateAndNormalizeRows, ColumnMapping } from '../services/resources/row-validator';
+import { indexDocumentChunks, ChunkToIndex, getQdrantStatus } from '../services/ai/qdrant.service';
+
+function createChunksFromText(text: string, filename: string, category: string): ChunkToIndex[] {
+  const chunks: ChunkToIndex[] = [];
+  const chunkSize = 600;
+  const overlap = 100;
+  let i = 0;
+  let chunkIdx = 0;
+  while (i < text.length) {
+    const chunkText = text.slice(i, i + chunkSize).trim();
+    if (chunkText.length > 25) {
+      chunks.push({
+        chunkIndex: chunkIdx++,
+        text: chunkText,
+        metadata: { filename, category },
+      });
+    }
+    i += chunkSize - overlap;
+  }
+  return chunks;
+}
 
 const router = Router();
 router.use(requireAuth);
@@ -193,6 +214,15 @@ router.post('/:resourceId/process', async (req: Request, res: Response, next: Ne
       const text = await extractTextFromPDF(storagePath);
       const suggestedType = detectResourceType(originalFilename, []);
 
+      // Chunk and index into Qdrant Vector DB & PostgreSQL
+      const chunks = createChunksFromText(text, originalFilename, suggestedType);
+      const qdrantResult = await indexDocumentChunks({
+        userId,
+        resourceFileId: resourceId,
+        filename: originalFilename,
+        chunks,
+      });
+
       await prisma.resourceFile.update({
         where: { id: resourceId },
         data: {
@@ -205,6 +235,8 @@ router.post('/:resourceId/process', async (req: Request, res: Response, next: Ne
       res.status(200).json({
         type: 'document',
         charCount: text.length,
+        chunksIndexed: chunks.length,
+        indexedInQdrant: qdrantResult.indexedInQdrant,
         textPreview: text.slice(0, 1000),
         suggestedResourceType: suggestedType,
       });
@@ -215,6 +247,15 @@ router.post('/:resourceId/process', async (req: Request, res: Response, next: Ne
       const text = await extractTextFromDOCX(storagePath);
       const suggestedType = detectResourceType(originalFilename, []);
 
+      // Chunk and index into Qdrant Vector DB & PostgreSQL
+      const chunks = createChunksFromText(text, originalFilename, suggestedType);
+      const qdrantResult = await indexDocumentChunks({
+        userId,
+        resourceFileId: resourceId,
+        filename: originalFilename,
+        chunks,
+      });
+
       await prisma.resourceFile.update({
         where: { id: resourceId },
         data: {
@@ -227,6 +268,8 @@ router.post('/:resourceId/process', async (req: Request, res: Response, next: Ne
       res.status(200).json({
         type: 'document',
         charCount: text.length,
+        chunksIndexed: chunks.length,
+        indexedInQdrant: qdrantResult.indexedInQdrant,
         textPreview: text.slice(0, 1000),
         suggestedResourceType: suggestedType,
       });
@@ -235,6 +278,14 @@ router.post('/:resourceId/process', async (req: Request, res: Response, next: Ne
 
     // Default text/markdown
     const text = fs.readFileSync(storagePath, 'utf-8');
+    const chunks = createChunksFromText(text, originalFilename, ResourceType.GENERAL_REFERENCE);
+    const qdrantResult = await indexDocumentChunks({
+      userId,
+      resourceFileId: resourceId,
+      filename: originalFilename,
+      chunks,
+    });
+
     await prisma.resourceFile.update({
       where: { id: resourceId },
       data: {
@@ -246,6 +297,8 @@ router.post('/:resourceId/process', async (req: Request, res: Response, next: Ne
     res.status(200).json({
       type: 'text',
       charCount: text.length,
+      chunksIndexed: chunks.length,
+      indexedInQdrant: qdrantResult.indexedInQdrant,
       textPreview: text.slice(0, 1000),
       suggestedResourceType: ResourceType.GENERAL_REFERENCE,
     });
@@ -603,6 +656,13 @@ router.delete('/:resourceId', async (req: Request, res: Response, next: NextFunc
   } catch (err) {
     next(err);
   }
+});
+
+// ─── GET /resources/qdrant-status ─────────────────────────────────────────────
+
+router.get('/qdrant-status', async (_req: Request, res: Response) => {
+  const status = await getQdrantStatus();
+  res.status(200).json(status);
 });
 
 export default router;

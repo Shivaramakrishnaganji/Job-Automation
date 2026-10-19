@@ -39,17 +39,17 @@ interface FactItem {
 }
 
 const DEFAULT_PROFILE: CandidateProfileData = {
-  fullName: 'Shiva Kumar',
-  email: 'shiva@example.com',
+  fullName: 'Your Name',
+  email: 'candidate@example.com',
   phone: '+91 98765 43210',
   city: 'Hyderabad',
   country: 'India',
   degree: 'Bachelor of Technology (B.Tech)',
-  branch: 'Electrical & Electronics Engineering (EEE)',
+  branch: 'Computer Science & Engineering',
   graduationYear: 2027,
-  headline: 'Aspiring Software & Systems Engineer (B.Tech EEE 2027)',
+  headline: 'Full-Stack Software Engineer & Tech Aspirant',
   summary:
-    'Electrical & Electronics Engineering student with strong full-stack skills in React, Node.js, and PostgreSQL, alongside core electrical engineering competencies in power systems and circuit analysis.',
+    'Dedicated engineering candidate with experience in modern software architectures, algorithms, and application development.',
 };
 
 const DEFAULT_FACTS: FactItem[] = [
@@ -271,6 +271,59 @@ export default function Profile() {
     }
   };
 
+  // Quick Track Template Handler
+  const handleApplyTemplate = async (selectedTrack: string) => {
+    let templateProfile: Partial<CandidateProfileData> = {};
+    let templateFacts: FactItem[] = [];
+
+    if (selectedTrack === 'SOFTWARE_IT') {
+      templateProfile = {
+        headline: 'Full-Stack Software Engineer & Systems Developer',
+        branch: 'Computer Science & Engineering',
+        summary: 'Passionate about modern web development, scalable APIs, and AI applications.',
+      };
+      templateFacts = [
+        { id: `fact-${Date.now()}-1`, category: 'SKILL', label: 'JavaScript / TypeScript & Node.js', valueJson: { level: 'Proficient', years: 2 }, verifiedByUser: true },
+        { id: `fact-${Date.now()}-2`, category: 'SKILL', label: 'React, Next.js & Frontend Engineering', valueJson: { level: 'Proficient' }, verifiedByUser: true },
+        { id: `fact-${Date.now()}-3`, category: 'SKILL', label: 'SQL, PostgreSQL & REST APIs', valueJson: { level: 'Intermediate' }, verifiedByUser: true },
+        { id: `fact-${Date.now()}-4`, category: 'PROJECT', label: 'Full-Stack Web Application', valueJson: { techStack: ['React', 'Node.js', 'PostgreSQL'] }, verifiedByUser: true },
+      ];
+    } else if (selectedTrack === 'CORE_EEE') {
+      templateProfile = {
+        headline: 'Electrical & Electronics Engineer (Power & Systems)',
+        branch: 'Electrical & Electronics Engineering (EEE)',
+        summary: 'Focused on electrical power distribution, circuit protection, transient analysis, and MATLAB simulation.',
+      };
+      templateFacts = [
+        { id: `fact-${Date.now()}-1`, category: 'SKILL', label: 'Circuit Analysis & Power Systems', valueJson: { level: 'Proficient' }, verifiedByUser: true },
+        { id: `fact-${Date.now()}-2`, category: 'SKILL', label: 'MATLAB / Simulink Grid Modeling', valueJson: { level: 'Proficient' }, verifiedByUser: true },
+        { id: `fact-${Date.now()}-3`, category: 'SKILL', label: 'Microcontrollers & Embedded C', valueJson: { level: 'Intermediate' }, verifiedByUser: true },
+        { id: `fact-${Date.now()}-4`, category: 'PROJECT', label: '3-Phase Grid Transient Simulation', valueJson: { tool: 'MATLAB/Simulink' }, verifiedByUser: true },
+      ];
+    } else {
+      templateProfile = {
+        headline: 'Business & Data Analyst (Reporting & Insights)',
+        branch: 'Data Analytics & Information Systems',
+        summary: 'Specializing in exploratory data analysis, business metric forecasting, and executive dashboard reporting.',
+      };
+      templateFacts = [
+        { id: `fact-${Date.now()}-1`, category: 'SKILL', label: 'SQL & Relational Data Modeling', valueJson: { level: 'Advanced' }, verifiedByUser: true },
+        { id: `fact-${Date.now()}-2`, category: 'SKILL', label: 'Python for Analytics (Pandas, NumPy)', valueJson: { level: 'Proficient' }, verifiedByUser: true },
+        { id: `fact-${Date.now()}-3`, category: 'SKILL', label: 'Power BI & Tableau Dashboards', valueJson: { level: 'Proficient' }, verifiedByUser: true },
+        { id: `fact-${Date.now()}-4`, category: 'PROJECT', label: 'Business Performance Analytics Portal', valueJson: { stack: ['SQL', 'Power BI'] }, verifiedByUser: true },
+      ];
+    }
+
+    const updatedProfile = { ...profile, ...templateProfile };
+    try {
+      localStorage.setItem('custom_candidate_profile', JSON.stringify(updatedProfile));
+      localStorage.setItem('custom_candidate_facts', JSON.stringify(templateFacts));
+      await axios.put('/profile', updatedProfile);
+    } catch {}
+    refetchProfile();
+    refetchFacts();
+  };
+
   return (
     <Layout>
       <div className="space-y-6 max-w-5xl mx-auto">
@@ -312,6 +365,35 @@ export default function Profile() {
             >
               <Edit3 className="w-4 h-4" />
               <span>Edit Profile</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Quick Track Template Bar */}
+        <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center space-x-2 text-slate-300">
+            <Sparkles className="w-4 h-4 text-indigo-400 flex-shrink-0" />
+            <span className="font-semibold text-white">Quick Track Presets:</span>
+            <span className="text-slate-400 hidden sm:inline">Apply tailored skills & competencies in one click:</span>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => handleApplyTemplate('SOFTWARE_IT')}
+              className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-indigo-600/20 hover:border-indigo-500/30 border border-slate-800 text-slate-200 hover:text-indigo-300 font-medium transition"
+            >
+              💻 Software / IT
+            </button>
+            <button
+              onClick={() => handleApplyTemplate('CORE_EEE')}
+              className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-indigo-600/20 hover:border-indigo-500/30 border border-slate-800 text-slate-200 hover:text-indigo-300 font-medium transition"
+            >
+              ⚡ Core EEE
+            </button>
+            <button
+              onClick={() => handleApplyTemplate('BUSINESS_DATA_ANALYST')}
+              className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-indigo-600/20 hover:border-indigo-500/30 border border-slate-800 text-slate-200 hover:text-indigo-300 font-medium transition"
+            >
+              📊 Data Analyst
             </button>
           </div>
         </div>

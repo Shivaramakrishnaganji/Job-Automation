@@ -111,8 +111,14 @@ export default function ResourceLibrary() {
         }
         setWizardStep(2); // Go to mapping step
       } else {
-        setUploadProgress('Document processed and indexed into candidate facts!');
-        setTimeout(() => setUploadProgress(null), 3000);
+        const chunks = procRes.data?.chunksIndexed || 1;
+        const qdrantActive = procRes.data?.indexedInQdrant;
+        setUploadProgress(
+          `Document processed! ${chunks} chunks indexed ${
+            qdrantActive ? 'into Qdrant Vector DB' : 'into knowledge base'
+          }. This project/resume evidence will be retrieved automatically when tailoring resumes.`
+        );
+        setTimeout(() => setUploadProgress(null), 6000);
       }
 
       refetchResources();
