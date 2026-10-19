@@ -9,6 +9,8 @@
   "scripts": {
     "dev": "concurrently \"npm run dev --workspace=apps/api\" \"npm run dev --workspace=apps/web\"",
     "build": "npm run build --workspace=packages/shared && npm run build --workspace=apps/api && npm run build --workspace=apps/web",
+    "build:api": "prisma generate --schema=prisma/schema.prisma && npm run build --workspace=packages/shared && npm run build --workspace=apps/api",
+    "db:push": "prisma db push --schema=prisma/schema.prisma",
     "migrate": "prisma migrate dev --schema=prisma/schema.prisma",
     "migrate:deploy": "prisma migrate deploy --schema=prisma/schema.prisma",
     "lint": "eslint \"apps/**/*.ts\" \"apps/**/*.tsx\" \"packages/**/*.ts\""
