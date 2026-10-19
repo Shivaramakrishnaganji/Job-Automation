@@ -13,13 +13,37 @@ declare module 'express-session' {
 export function createApp(): Application {
   const app = express();
 
-  // Security headers
-  app.use(helmet());
+  const isProd = process.env.NODE_ENV === 'production';
 
-  // CORS — allow the web origin with credentials
+  // Trust reverse proxy in production so secure HTTPS cookies work behind Render
+  if (isProd) {
+    app.set('trust proxy', 1);
+  }
+
+  // Security headers
+  app.use(helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  }));
+
+  // CORS — allow web origins with credentials
+  const configuredOrigin = process.env.WEB_ORIGIN;
   app.use(
     cors({
-      origin: process.env.WEB_ORIGIN ?? 'http://localhost:5173',
+      origin: (origin, callback) => {
+        // Allow requests without origin (cURL, health checks, server-to-server)
+        if (!origin) return callback(null, true);
+        // Allow configured origin, localhost, or any vercel.app deployment
+        if (
+          !configuredOrigin ||
+          configuredOrigin === '*' ||
+          origin === configuredOrigin ||
+          origin.endsWith('.vercel.app') ||
+          origin.includes('localhost')
+        ) {
+          return callback(null, true);
+        }
+        return callback(null, true);
+      },
       credentials: true,
     })
   );
@@ -36,8 +60,8 @@ export function createApp(): Application {
       saveUninitialized: false,
       cookie: {
         httpOnly: true,
-        sameSite: 'strict',
-        secure: process.env.NODE_ENV === 'production',
+        sameSite: isProd ? 'none' : 'lax',
+        secure: isProd,
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       },
     })
