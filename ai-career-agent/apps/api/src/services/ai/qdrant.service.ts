@@ -2,31 +2,43 @@ import OpenAI from 'openai';
 import { v4 as uuidv4 } from 'uuid';
 import prisma from '../../lib/prisma';
 
-// ─── Configuration ────────────────────────────────────────────────────────────
+// ─── Dynamic Configuration Accessors ──────────────────────────────────────────
 
-const QDRANT_URL = (process.env.QDRANT_URL || 'http://localhost:6333').replace(/\/+$/, '');
-const QDRANT_API_KEY = process.env.QDRANT_API_KEY;
-const COLLECTION_NAME = process.env.QDRANT_COLLECTION || 'candidate_evidence';
-const EMBEDDING_MODEL = process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small';
+function getQdrantUrl(): string {
+  const url = process.env.QDRANT_URL || 'http://localhost:6333';
+  return url.trim().replace(/\/+$/, '');
+}
 
-const openaiClient = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || 'sk-dummy-key-offline',
-});
+function getQdrantApiKey(): string | undefined {
+  const key = process.env.QDRANT_API_KEY?.trim();
+  return key || undefined;
+}
+
+function getCollectionName(): string {
+  return process.env.QDRANT_COLLECTION?.trim() || 'candidate_evidence';
+}
 
 function getHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
-  if (QDRANT_API_KEY) {
-    headers['api-key'] = QDRANT_API_KEY;
+  const apiKey = getQdrantApiKey();
+  if (apiKey) {
+    headers['api-key'] = apiKey;
   }
   return headers;
+}
+
+function getOpenAIClient(): OpenAI {
+  return new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY || 'sk-dummy-key-offline',
+  });
 }
 
 // ─── Embeddings Helper ────────────────────────────────────────────────────────
 
 /**
- * Generate a 1536-dimensional embedding vector using OpenAI.
+ * Generate a 1536-dimensional embedding vector using OpenAI text-embedding-3-small.
  */
 export async function getEmbedding(text: string): Promise<number[] | null> {
   if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY.includes('dummy')) {
@@ -34,8 +46,9 @@ export async function getEmbedding(text: string): Promise<number[] | null> {
   }
 
   try {
-    const res = await openaiClient.embeddings.create({
-      model: EMBEDDING_MODEL,
+    const openai = getOpenAIClient();
+    const res = await openai.embeddings.create({
+      model: process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small',
       input: text.slice(0, 8000), // Protect against token limits
     });
     return res.data[0]?.embedding ?? null;
@@ -55,8 +68,11 @@ let collectionVerified = false;
 export async function ensureQdrantCollection(): Promise<boolean> {
   if (collectionVerified) return true;
 
+  const url = getQdrantUrl();
+  const collection = getCollectionName();
+
   try {
-    const checkRes = await fetch(`${QDRANT_URL}/collections/${COLLECTION_NAME}`, {
+    const checkRes = await fetch(`${url}/collections/${collection}`, {
       method: 'GET',
       headers: getHeaders(),
     });
@@ -67,7 +83,7 @@ export async function ensureQdrantCollection(): Promise<boolean> {
     }
 
     // Collection does not exist, create it
-    const createRes = await fetch(`${QDRANT_URL}/collections/${COLLECTION_NAME}`, {
+    const createRes = await fetch(`${url}/collections/${collection}`, {
       method: 'PUT',
       headers: getHeaders(),
       body: JSON.stringify({
@@ -79,7 +95,7 @@ export async function ensureQdrantCollection(): Promise<boolean> {
     });
 
     if (createRes.ok) {
-      console.log(`[qdrant.service] Created vector collection: "${COLLECTION_NAME}"`);
+      console.log(`[qdrant.service] Created vector collection: "${collection}"`);
       collectionVerified = true;
       return true;
     }
@@ -154,7 +170,9 @@ export async function indexDocumentChunks(opts: {
   let indexedInQdrant = false;
   if (isQdrantReady && points.length > 0) {
     try {
-      const upsertRes = await fetch(`${QDRANT_URL}/collections/${COLLECTION_NAME}/points`, {
+      const url = getQdrantUrl();
+      const collection = getCollectionName();
+      const upsertRes = await fetch(`${url}/collections/${collection}/points`, {
         method: 'PUT',
         headers: getHeaders(),
         body: JSON.stringify({ points }),
@@ -200,7 +218,9 @@ export async function searchRelevantEvidence(opts: {
     const queryVector = await getEmbedding(query);
     if (queryVector) {
       try {
-        const searchRes = await fetch(`${QDRANT_URL}/collections/${COLLECTION_NAME}/points/search`, {
+        const url = getQdrantUrl();
+        const collection = getCollectionName();
+        const searchRes = await fetch(`${url}/collections/${collection}/points/search`, {
           method: 'POST',
           headers: getHeaders(),
           body: JSON.stringify({
@@ -259,22 +279,30 @@ export async function getQdrantStatus(): Promise<{
   connected: boolean;
   collection: string;
   url: string;
+  pointsCount?: number;
 }> {
+  const url = getQdrantUrl();
+  const collection = getCollectionName();
   try {
-    const res = await fetch(`${QDRANT_URL}/collections/${COLLECTION_NAME}`, {
+    const res = await fetch(`${url}/collections/${collection}`, {
       method: 'GET',
       headers: getHeaders(),
     });
+    if (!res.ok) {
+      return { connected: false, collection, url };
+    }
+    const data: any = await res.json();
     return {
-      connected: res.ok,
-      collection: COLLECTION_NAME,
-      url: QDRANT_URL,
+      connected: true,
+      collection,
+      url,
+      pointsCount: data?.result?.points_count || 0,
     };
   } catch {
     return {
       connected: false,
-      collection: COLLECTION_NAME,
-      url: QDRANT_URL,
+      collection,
+      url,
     };
   }
 }
