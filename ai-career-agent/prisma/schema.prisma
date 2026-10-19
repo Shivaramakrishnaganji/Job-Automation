@@ -1,0 +1,644 @@
+// ============================================================
+// Prisma Schema — ai-career-agent
+// PostgreSQL · prisma-client-js
+// ============================================================
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum ProfileFactCategory {
+  EDUCATION
+  SKILL
+  EXPERIENCE
+  PROJECT
+  CREDENTIAL
+  ACHIEVEMENT
+  PREFERENCE
+}
+
+enum WorkplaceType {
+  ONSITE
+  HYBRID
+  REMOTE
+  UNKNOWN
+}
+
+enum JobVerificationStatus {
+  VERIFIED_OPEN
+  NEEDS_VERIFICATION
+  STALE
+  CLOSED
+  UNKNOWN
+}
+
+enum MatchTrack {
+  SOFTWARE_IT
+  CORE_EEE
+  BUSINESS_DATA_ANALYST
+}
+
+enum DocumentType {
+  RESUME
+  COVER_LETTER
+  APPLICATION_ANSWERS
+}
+
+enum ApprovalStatus {
+  DRAFT
+  APPROVED
+  REJECTED
+}
+
+enum ApplicationStatus {
+  DISCOVERED
+  MATCHED
+  READY_FOR_REVIEW
+  APPROVED
+  APPLICATION_OPENED
+  SUBMITTED_PENDING_CONFIRMATION
+  APPLIED
+  INTERVIEW
+  OFFER
+  REJECTED
+  WITHDRAWN
+  CLOSED
+  NOT_ELIGIBLE
+  DUPLICATE
+}
+
+enum ContactType {
+  RECRUITER
+  TALENT_ACQUISITION
+  HIRING_MANAGER
+  TEAM_MEMBER
+  REFERRAL_CONTACT
+}
+
+enum OutreachStatus {
+  RESEARCHING
+  DRAFT_READY
+  USER_SENT
+  REPLIED
+  NO_RESPONSE
+  CLOSED
+}
+
+enum ResourceType {
+  JOB_OPENINGS
+  COMPANY_TARGETS
+  CONTACTS
+  APPLICATION_TRACKER
+  CANDIDATE_EVIDENCE
+  ELIGIBILITY_REFERENCE
+  INTERVIEW_PREP
+  GENERAL_REFERENCE
+}
+
+enum ProcessingStatus {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+}
+
+enum ImportStatus {
+  PENDING
+  CONFIRMED
+  IMPORTING
+  DONE
+  FAILED
+}
+
+enum ValidationStatus {
+  PENDING
+  VALID
+  INVALID
+  DUPLICATE
+}
+
+enum AgentRunStatus {
+  QUEUED
+  RUNNING
+  NEEDS_REVIEW
+  COMPLETED
+  PARTIALLY_FAILED
+  FAILED
+  CANCELED
+}
+
+enum AgentTaskStatus {
+  QUEUED
+  RUNNING
+  DONE
+  FAILED
+  SKIPPED
+}
+
+// ============================================================
+// MODELS
+// ============================================================
+
+// 1. User
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  candidateProfile  CandidateProfile?
+  profileFacts      ProfileFact[]
+  searchPreferences SearchPreference[]
+  resourceFiles     ResourceFile[]
+  agentRuns         AgentRun[]
+  jobMatches        JobMatch[]
+  documents         Document[]
+  applications      Application[]
+  contacts          Contact[]
+  outreachDrafts    OutreachDraft[]
+  auditEvents       AuditEvent[]
+  aiUsageEvents     AiUsageEvent[]
+  resourceImportBatches ResourceImportBatch[]
+  resourceChunks    ResourceChunk[]
+  connectorConfigs  ConnectorConfig[]
+}
+
+// 2. CandidateProfile
+model CandidateProfile {
+  id                 String   @id @default(uuid())
+  userId             String   @unique
+  fullName           String
+  email              String
+  phone              String?
+  city               String?
+  country            String?
+  degree             String?
+  branch             String?
+  graduationYear     Int?
+  headline           String?
+  summary            String?
+  baseResumeFileId   String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// 3. ProfileFact
+model ProfileFact {
+  id             String              @id @default(uuid())
+  userId         String
+  category       ProfileFactCategory
+  label          String
+  valueJson      Json
+  sourceType     String
+  sourceRef      String?
+  verifiedByUser Boolean             @default(false)
+  validFrom      DateTime?
+  validUntil     DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, category])
+}
+
+// 4. SearchPreference
+model SearchPreference {
+  id                    String   @id @default(uuid())
+  userId                String
+  name                  String
+  targetRolesJson       Json
+  locationsJson         Json
+  workModesJson         Json
+  employmentTypesJson   Json
+  minSalary             Float?
+  currency              String?
+  fresherOnly           Boolean  @default(true)
+  requiredSkillsJson    Json
+  excludedCompaniesJson Json
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// 5. JobSource
+model JobSource {
+  id               String    @id @default(uuid())
+  name             String
+  sourceType       String
+  baseUrl          String
+  configJson       Json?
+  isEnabled        Boolean   @default(true)
+  lastSuccessAt    DateTime?
+  lastErrorAt      DateTime?
+  lastErrorMessage String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  jobs             Job[]
+}
+
+// 6. Job
+model Job {
+  id                   String                @id @default(uuid())
+  sourceId             String?
+  sourceJobId          String?
+  company              String
+  title                String
+  locationText         String?
+  workplaceType        WorkplaceType
+  employmentType       String?
+  descriptionText      String
+  requirementsText     String?
+  salaryMin            Float?
+  salaryMax            Float?
+  salaryCurrency       String?
+  postedAt             DateTime?
+  firstSeenAt          DateTime              @default(now())
+  applyUrl             String
+  jobUrl               String
+  sourceApiUrl         String?
+  eligibilityNotesJson Json                  @default("[]")
+  isActive             Boolean               @default(true)
+  verificationStatus   JobVerificationStatus @default(NEEDS_VERIFICATION)
+  verifiedAt           DateTime?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  source               JobSource?            @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+
+  // Relations
+  observations         JobSourceObservation[]
+  jobMatches           JobMatch[]
+  documents            Document[]
+  applications         Application[]
+  contacts             Contact[]
+
+  @@index([company, title])
+  @@index([verificationStatus])
+  @@index([firstSeenAt])
+}
+
+// 7. JobSourceObservation
+model JobSourceObservation {
+  id                   String    @id @default(uuid())
+  jobId                String
+  connectorId          String?
+  externalJobId        String?
+  sourceUrl            String
+  canonicalUrl         String?
+  observedAt           DateTime  @default(now())
+  sourcePostedAt       DateTime?
+  rawHash              String?
+  verificationStatus   String
+  responseMetadataJson Json?
+  createdAt            DateTime  @default(now())
+
+  job                  Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+}
+
+// 8. JobMatch
+model JobMatch {
+  id                   String     @id @default(uuid())
+  userId               String
+  jobId                String
+  score                Int
+  confidence           String
+  eligible             String
+  matchedEvidenceJson  Json
+  gapsJson             Json
+  reasonsJson          Json
+  warningsJson         Json
+  track                MatchTrack
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+
+  user                 User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job                  Job        @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, jobId])
+}
+
+// 9. Document
+model Document {
+  id             String         @id @default(uuid())
+  userId         String
+  jobId          String?
+  applicationId  String?
+  documentType   DocumentType
+  contentJson    Json
+  approvalStatus ApprovalStatus @default(DRAFT)
+  approvedAt     DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job            Job?           @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  @@index([userId, documentType])
+}
+
+// 10. Application
+model Application {
+  id                       String            @id @default(uuid())
+  userId                   String
+  jobId                    String
+  status                   ApplicationStatus @default(DISCOVERED)
+  resumeVersionId          String?
+  coverLetterVersionId     String?
+  answerSetVersionId       String?
+  discoveredAt             DateTime          @default(now())
+  reviewedAt               DateTime?
+  approvedAt               DateTime?
+  submittedAt              DateTime?
+  lastUpdatedAt            DateTime          @default(now()) @updatedAt
+  notes                    String?
+  nextFollowUpAt           DateTime?
+  createdAt                DateTime          @default(now())
+  updatedAt                DateTime          @updatedAt
+
+  user                     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job                      Job               @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  // Relations
+  events                   ApplicationEvent[]
+  outreachDrafts           OutreachDraft[]
+
+  @@unique([userId, jobId])
+  @@index([userId, status])
+}
+
+// 11. ApplicationEvent
+model ApplicationEvent {
+  id            String      @id @default(uuid())
+  applicationId String
+  eventType     String
+  fromStatus    String?
+  toStatus      String?
+  detailsJson   Json?
+  createdAt     DateTime    @default(now())
+
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+}
+
+// 12. Contact
+model Contact {
+  id               String         @id @default(uuid())
+  userId           String
+  companyName      String
+  jobId            String?
+  name             String?
+  roleTitle        String?
+  contactType      ContactType
+  profileUrl       String?
+  sourceUrl        String?
+  sourceName       String?
+  confidence       String?
+  relevanceReason  String?
+  outreachStatus   OutreachStatus @default(RESEARCHING)
+  lastContactedAt  DateTime?
+  nextFollowUpAt   DateTime?
+  notes            String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job              Job?           @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  outreachDrafts   OutreachDraft[]
+}
+
+// 13. OutreachDraft
+model OutreachDraft {
+  id                   String         @id @default(uuid())
+  userId               String
+  contactId            String
+  applicationId        String?
+  channel              String
+  draftType            String
+  bodyText             String
+  evidenceFactIdsJson  Json
+  approvalStatus       ApprovalStatus @default(DRAFT)
+  sentByUserAt         DateTime?
+  replyReceivedAt      DateTime?
+  createdAt            DateTime       @default(now())
+
+  user                 User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contact              Contact        @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  application          Application?   @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+}
+
+// 14. AuditEvent
+model AuditEvent {
+  id           String   @id @default(uuid())
+  userId       String?
+  action       String
+  entityType   String
+  entityId     String?
+  metadataJson Json?
+  createdAt    DateTime @default(now())
+
+  user         User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, entityType])
+}
+
+// 15. AiUsageEvent
+model AiUsageEvent {
+  id             String   @id @default(uuid())
+  userId         String?
+  model          String
+  operation      String
+  inputTokens    Int
+  outputTokens   Int
+  estimatedCost  Float
+  latencyMs      Int?
+  success        Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  user           User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+}
+
+// 16. ResourceFile
+model ResourceFile {
+  id               String           @id @default(uuid())
+  userId           String
+  originalFilename String
+  mimeType         String
+  storagePath      String
+  contentHash      String
+  resourceType     ResourceType
+  sourceUrl        String?
+  processingStatus ProcessingStatus @default(PENDING)
+  uploadedAt       DateTime         @default(now())
+  processedAt      DateTime?
+  errorSummary     String?
+  isActive         Boolean          @default(true)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  importBatches    ResourceImportBatch[]
+  chunks           ResourceChunk[]
+}
+
+// 17. ResourceImportBatch
+model ResourceImportBatch {
+  id                String       @id @default(uuid())
+  userId            String
+  resourceFileId    String
+  selectedSheetsJson Json?
+  columnMappingJson Json?
+  importStatus      ImportStatus @default(PENDING)
+  rowsSeen          Int          @default(0)
+  rowsImported      Int          @default(0)
+  rowsSkipped       Int          @default(0)
+  rowsFailed        Int          @default(0)
+  createdAt         DateTime     @default(now())
+  confirmedAt       DateTime?
+
+  user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resourceFile      ResourceFile @relation(fields: [resourceFileId], references: [id], onDelete: Cascade)
+
+  rows              ResourceImportRow[]
+}
+
+// 18. ResourceImportRow
+model ResourceImportRow {
+  id                  String            @id @default(uuid())
+  batchId             String
+  sheetName           String?
+  sourceRowNumber     Int
+  rawRowJson          Json
+  normalizedRecordJson Json?
+  validationStatus    ValidationStatus  @default(PENDING)
+  validationErrorsJson Json?
+  targetRecordType    String?
+  targetRecordId      String?
+  createdAt           DateTime          @default(now())
+
+  batch               ResourceImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+}
+
+// 19. ResourceChunk
+model ResourceChunk {
+  id             String       @id @default(uuid())
+  userId         String
+  resourceFileId String
+  chunkIndex     Int
+  textContent    String
+  metadataJson   Json
+  embeddingRef   String?
+  createdAt      DateTime     @default(now())
+
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resourceFile   ResourceFile @relation(fields: [resourceFileId], references: [id], onDelete: Cascade)
+}
+
+// 20. AgentRun
+model AgentRun {
+  id                    String         @id @default(uuid())
+  ownerId               String
+  mode                  String
+  selectedTracksJson    Json
+  selectedConnectorsJson Json
+  filtersJson           Json
+  status                AgentRunStatus @default(QUEUED)
+  graphThreadId         String?        @unique
+  currentStage          String?
+  createdAt             DateTime       @default(now())
+  startedAt             DateTime?
+  finishedAt            DateTime?
+  canceledAt            DateTime?
+  errorSummary          String?
+  discoveredCount       Int            @default(0)
+  verifiedCount         Int            @default(0)
+  duplicateCount        Int            @default(0)
+  highFitCount          Int            @default(0)
+  needsReviewCount      Int            @default(0)
+  estimatedCostUsd      Float?
+  actualCostUsd         Float          @default(0)
+  updatedAt             DateTime       @updatedAt
+
+  owner                 User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  tasks                 AgentRunTask[]
+  events                AgentRunEvent[]
+
+  @@index([ownerId, status])
+}
+
+// 21. AgentRunTask
+model AgentRunTask {
+  id               String          @id @default(uuid())
+  runId            String
+  taskType         String
+  connectorId      String?
+  status           AgentTaskStatus @default(QUEUED)
+  attemptCount     Int             @default(0)
+  startedAt        DateTime?
+  finishedAt       DateTime?
+  errorCode        String?
+  safeErrorMessage String?
+  countersJson     Json?
+  idempotencyKey   String          @unique
+  createdAt        DateTime        @default(now())
+
+  run              AgentRun        @relation(fields: [runId], references: [id], onDelete: Cascade)
+}
+
+// 22. AgentRunEvent
+model AgentRunEvent {
+  id            String   @id @default(uuid())
+  runId         String
+  timestamp     DateTime @default(now())
+  stage         String
+  severity      String
+  publicMessage String
+  metadataJson  Json?
+
+  run           AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, timestamp])
+}
+
+// 23. ConnectorConfig
+model ConnectorConfig {
+  id                  String    @id @default(uuid())
+  ownerId             String?
+  connectorKey        String
+  displayName         String
+  category            String
+  enabled             Boolean   @default(false)
+  accessMode          String
+  allowedActionsJson  Json
+  credentialReference String?
+  lastSuccessAt       DateTime?
+  lastErrorAt         DateTime?
+  lastErrorCode       String?
+  termsReviewedAt     DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  owner               User?     @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+
+  @@unique([ownerId, connectorKey])
+}
