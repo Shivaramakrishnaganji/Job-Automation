@@ -78,6 +78,16 @@ export async function ensureQdrantCollection(): Promise<boolean> {
     });
 
     if (checkRes.ok) {
+      // Ensure keyword index on userId for strict mode filtering
+      await fetch(`${url}/collections/${collection}/index`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          field_name: 'userId',
+          field_schema: 'keyword',
+        }),
+      }).catch(() => {});
+
       collectionVerified = true;
       return true;
     }
@@ -96,6 +106,15 @@ export async function ensureQdrantCollection(): Promise<boolean> {
 
     if (createRes.ok) {
       console.log(`[qdrant.service] Created vector collection: "${collection}"`);
+      await fetch(`${url}/collections/${collection}/index`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          field_name: 'userId',
+          field_schema: 'keyword',
+        }),
+      }).catch(() => {});
+
       collectionVerified = true;
       return true;
     }

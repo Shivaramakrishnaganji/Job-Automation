@@ -23,9 +23,13 @@ const ALLOWED_MIME_TYPES = [
   'application/csv',
   'application/pdf',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // docx
+  'application/msword', // doc
   'text/plain',
   'text/markdown',
+  'application/json',
 ];
+
+const ALLOWED_EXTENSIONS = ['.xlsx', '.xls', '.csv', '.pdf', '.docx', '.doc', '.txt', '.md', '.json'];
 
 export const resourceUpload = multer({
   storage: multer.diskStorage({
@@ -39,6 +43,9 @@ export const resourceUpload = multer({
   }),
   limits: { fileSize: 25 * 1024 * 1024 }, // 25MB
   fileFilter: (_req: any, file: any, cb: any) => {
-    cb(null, ALLOWED_MIME_TYPES.includes(file.mimetype));
+    const ext = path.extname(file.originalname).toLowerCase();
+    const isMimeAllowed = ALLOWED_MIME_TYPES.includes(file.mimetype);
+    const isExtAllowed = ALLOWED_EXTENSIONS.includes(ext);
+    cb(null, isMimeAllowed || isExtAllowed);
   },
 });
